@@ -2,6 +2,9 @@
 #define _GNU_SOURCE 		/* needed for RTLD_NEXT */
 #endif
 #include <dlfcn.h>
+#ifdef __sun
+#include <fcntl.h>
+#endif
 /* remove limits when done debugging */
 #include <limits.h>
 #include <math.h>
@@ -13,9 +16,14 @@
 #endif
 #ifdef __sun
 #include <sys/processor.h>
+#include <sys/stat.h>
 #endif
 #include <sys/types.h>
 #include <time.h>
+#ifdef __sun
+#include <unistd.h>
+#endif
+
 
 static void __attribute__ ((constructor)) _init_fasttime();
 
@@ -45,6 +53,56 @@ typedef union tscu {
 
 #ifdef __sun
 
+/*
+ * Determine if proper TSC support . If proper TSC
+ * is not available, or there are issues determining if support is
+ * available, then print an error and exit the process.
+ */
+static void
+check_tsc()
+{
+	int fd;
+	struct {
+		uint32_t r_eax, r_ebx, r_ecx, r_edx;
+	} _r, *rp = &_r;
+
+	if ((fd = open("/dev/cpu/self/cpuid", O_RDONLY)) == -1) {
+		perror("failed to open /dev/cpu/self/cpuid");
+		exit(1);
+	}
+
+	if (pread(fd, rp, sizeof (*rp), 1) != sizeof (*rp)) {
+		perror("failed to read CPUID.1");
+		exit(1);
+	}
+
+	/*
+	 * CPUID.1:EDX[4] -- presence of TSC
+	 */
+	if ((rp->r_edx & 0x10) == 0) {
+		perror("No TSC present (CPUID.1:EDX[4])");
+		exit(1);
+	}
+
+	if (pread(fd, rp, sizeof (*rp), 0x80000001) != sizeof (*rp)) {
+		perror("failed to read CPUID.80000001H");
+		exit(1);
+	}
+
+	/*
+	 * CPUID.80000001H:EDX[27] -- presence of invariant TSC
+	 *
+	 * The invariant TSC does not fluctuate during transitions in
+	 * ACPI P-, C-, and T-states.
+	 */
+	if ((rp->r_edx & 0x8000000) == 0) {
+		perror("No invariant TSC present (CPUID.80000001H:EDX[27])");
+		exit(1);
+	}
+
+	(void) close(fd);
+}
+
 static int
 get_cpu_mhz()
 {
@@ -59,6 +117,20 @@ get_cpu_mhz()
 }
 
 #elif __linux
+
+/*
+ * XXX LX is not exposing all the flags that it should in
+ *     /proc/cpuinfo. That should be fixed. In the meantime we could
+ *     use inline assembly but for the sake of time I'm just going to
+ *     noop for now. We control our hardware so the check is more of a
+ *     paranoid sanity check than a requirement. That changes if this
+ *     ever becomes a public library.
+ */
+void
+check_tsc()
+{
+	return;
+}
 
 /*
  * Linux, go home, you're drunk.
@@ -123,6 +195,8 @@ static void
 _init_fasttime()
 {
 	unsigned int a, d, approx_cpu_hz;
+
+	(void) check_tsc();
 
 	if ((_sys_clock_gettime = dlsym(RTLD_NEXT, "clock_gettime")) == NULL) {
 		perror("failed to load system clock_gettime()");
