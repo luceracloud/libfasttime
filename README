@@ -1,0 +1,52 @@
+                             LIBFASTTIME
+
+Fast time calls from user space.
+
+SUMMARY
+
+    Overrides several time-related system library functions, providing
+    the same functionality without incurring the syscall penalty. It
+    is meant for applications with tight loops on time calls such as
+    gettimeofday(3C) and clock_gettime(3C), requiring latency of tens
+    of nanoseconds.
+
+OVERRIDDEN FUNCTIONS
+
+    * gettimeofday(3C) -- Get wall clock time as period of seconds +
+      microseconds since Unix epoch.
+
+    * clock_gettime(3C) -- POSIX API providing access to several
+      different types of clocks.
+
+      - CLOCK_REALTIME -- System-wide wall clock as period of seconds
+        + nanoseconds since Unix epoch.
+
+      - CLOCK_MONOTONIC -- System-wide clock relative to some
+        arbitrary point in time, only moves forward, and is not
+        affected by system time changes.
+
+    * gethrtime(3C) -- System-wide clock relative to some arbitrary
+      point in time and is not affected by system time changes. Only
+      available on illumos.
+
+CAVEATS
+
+    * The current implementation doesn't pick up wall clock changes
+      and thus gettimeofday(3C) can drift from the system value. For
+      example, NTP changes will not be noticed. This may be acceptable
+      for short-lived applications but considered fatal otherwise.
+
+    * All functions are built on the CPU's TSC register. To provide
+      the expected latency no fencing (LFENCE) or synchronization
+      (CPUID/RDTSCP) is done. Out-of-order execution is free to
+      rearrange these calls with its surrounding instructions. This is
+      probably acceptable for the library's intended purpose. It would
+      be a different story if used for precise cycle count in
+      microbenchmarks.
+
+USAGE
+
+    The current method of usage is setting LD_PRELOAD in the program's
+    environment.
+
+    LD_PRELOAD=~/path/to/libfasttime.so my_program
