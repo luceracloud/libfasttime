@@ -1,6 +1,3 @@
-#ifdef __linux
-#define _GNU_SOURCE 		/* needed for RTLD_NEXT */
-#endif
 #include <dlfcn.h>
 #ifdef __sun
 #include <fcntl.h>
@@ -288,6 +285,16 @@ clock_gettime(clockid_t clock_id, struct timespec *tp)
 		long nsec = tsc.tsc_64 % NANOSEC;
 		tp->tv_sec = base_ts.tv_sec + sec;
 		tp->tv_nsec = base_ts.tv_nsec + nsec;
+		break;
+	case CLOCK_MONOTONIC:
+		__asm__ volatile("rdtsc" : "=a" (a), "=d" (d));
+		tsc.tsc_64 = (((uint64_t)a) | ((uint64_t)d) << 32);
+		TSC_CONVERT(tsc, nsec_scale);
+		tp->tv_sec = tsc.tsc_64 / NANOSEC;
+		tp->tv_nsec = tsc.tsc_64 % NANOSEC;
+		break;
+	default:
+		_sys_clock_gettime(clock_id, tp);
 		break;
 	}
 
