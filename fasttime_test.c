@@ -79,8 +79,8 @@ test_posix_monotonic(const struct timespec *sleep)
 	 */
 	if (b_ns <= a_ns) {
 		printf("ERROR: test_posix_monotonic() failed\n");
-		printf("\ta_ns: %lu\n", a_ns);
-		printf("\tb_ns: %lu\n", b_ns);
+		printf("\ta_ns: %" PRIu64 "\n", a_ns);
+		printf("\tb_ns: %" PRIu64 "\n", b_ns);
 		exit(1);
 	}
 }
@@ -135,8 +135,8 @@ test_posix_xcore(processorid_t cpus[], size_t num_cpus, unsigned int seed)
 	 */
 	if (b_ns <= a_ns) {
 		printf("ERROR: test_posix_monotonic() failed\n");
-		printf("\ta_ns: %lu\n", a_ns);
-		printf("\tb_ns: %lu\n", b_ns);
+		printf("\ta_ns: %" PRIu64 "\n", a_ns);
+		printf("\tb_ns: %" PRIu64 "\n", b_ns);
 		exit(1);
 	}
 

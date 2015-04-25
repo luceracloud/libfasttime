@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <dlfcn.h>
 #ifdef __sun
 #include <fcntl.h>
@@ -234,21 +235,17 @@ gettimeofday(struct timeval *tp, void *tzp)
 	unsigned int a, d;
 	tscu_t tsc;
 
-	/* struct timespec now; */
-	/* _sys_clock_gettime(CLOCK_REALTIME, &now); */
-
-	/* consider using RDTSCP if you care about order */
 	__asm__ volatile("rdtsc" : "=a" (a), "=d" (d));
 	tsc.tsc_64 = (((uint64_t)a) | ((uint64_t)d) << 32) - base_tsc;
 	TSC_CONVERT(tsc, nsec_scale);
-
 	time_t sec = tsc.tsc_64 / NANOSEC;
 	long nsec = tsc.tsc_64 % NANOSEC;
+
 	tp->tv_sec = base_ts.tv_sec + sec;
 	tp->tv_usec = (base_ts.tv_nsec + nsec) / 1000;
 
-	/* printf("tv_sec: %lu tv_usec: %lu\n", tp->tv_sec, tp->tv_usec); */
-	/* printf("nw_sec: %lu nw_usec: %lu\n", now.tv_sec, now.tv_nsec / 1000); */
+	assert(tp->tv_sec > -1);
+	assert(tp->tv_usec > -1 && tp->tv_usec < 1000000);
 
 	return (0);
 }
@@ -285,14 +282,20 @@ clock_gettime(clockid_t clock_id, struct timespec *tp)
 		long nsec = tsc.tsc_64 % NANOSEC;
 		tp->tv_sec = base_ts.tv_sec + sec;
 		tp->tv_nsec = base_ts.tv_nsec + nsec;
+		assert(tp->tv_sec > -1);
+		assert(tp->tv_nsec > -1 && tp->tv_nsec < NANOSEC);
 		break;
+
 	case CLOCK_MONOTONIC:
 		__asm__ volatile("rdtsc" : "=a" (a), "=d" (d));
 		tsc.tsc_64 = (((uint64_t)a) | ((uint64_t)d) << 32);
 		TSC_CONVERT(tsc, nsec_scale);
 		tp->tv_sec = tsc.tsc_64 / NANOSEC;
 		tp->tv_nsec = tsc.tsc_64 % NANOSEC;
+		assert(tp->tv_sec > -1);
+		assert(tp->tv_nsec > -1 && tp->tv_nsec < NANOSEC);
 		break;
+
 	default:
 		_sys_clock_gettime(clock_id, tp);
 		break;
