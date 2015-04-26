@@ -235,6 +235,9 @@ gettimeofday(struct timeval *tp, void __attribute__((unused)) *tzp)
 	unsigned int a, d;
 	tscu_t tsc;
 
+	if (tp == NULL)
+		return (0);
+
 	__asm__ volatile("rdtsc" : "=a" (a), "=d" (d));
 	tsc.tsc_64 = (((uint64_t)a) | ((uint64_t)d) << 32) - base_tsc;
 	TSC_CONVERT(tsc, nsec_scale);
