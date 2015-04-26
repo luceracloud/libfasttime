@@ -9,7 +9,7 @@
  * length of time you want to assert their trueness.
  */
 #include <stdio.h>
-#include <stdint.h>
+#include <inttypes.h>
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
@@ -145,7 +145,7 @@ test_posix_xcore(processorid_t cpus[], size_t num_cpus)
 #elif __linux
 
 void
-test_posix_xcore(processorid_t cpus[], size_t num_cpus)
+test_posix_xcore(processorid_t cpus[], size_t __attribute__((unused)) num_cpus)
 {
 	cpu_set_t	cpuset;
 	processorid_t	a_cpu, b_cpu;
@@ -209,8 +209,8 @@ test_posix_xcore(processorid_t cpus[], size_t num_cpus)
 	 */
 	if (b_ns <= a_ns) {
 		printf("ERROR: test_posix_monotonic() failed\n");
-		printf("\ta_ns: %lu\n", a_ns);
-		printf("\tb_ns: %lu\n", b_ns);
+		printf("\ta_ns: %" PRIu64 "\n", a_ns);
+		printf("\tb_ns: %" PRIu64 "\n", b_ns);
 		exit(1);
 	}
 
