@@ -230,7 +230,7 @@ _init_fasttime()
 
 
 int
-gettimeofday(struct timeval *tp, void *tzp)
+gettimeofday(struct timeval *tp, void __attribute__((unused)) *tzp)
 {
 	unsigned int a, d;
 	tscu_t tsc;

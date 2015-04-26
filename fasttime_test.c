@@ -88,7 +88,7 @@ test_posix_monotonic(const struct timespec *sleep)
 #ifdef __sun
 
 void
-test_posix_xcore(processorid_t cpus[], size_t num_cpus, unsigned int seed)
+test_posix_xcore(processorid_t cpus[], size_t num_cpus)
 {
 	processorid_t	a_cpu, b_cpu;
 	uint64_t	a_ns, b_ns;
@@ -145,7 +145,7 @@ test_posix_xcore(processorid_t cpus[], size_t num_cpus, unsigned int seed)
 #elif __linux
 
 void
-test_posix_xcore(processorid_t cpus[], size_t num_cpus, unsigned int seed)
+test_posix_xcore(processorid_t cpus[], size_t num_cpus)
 {
 	cpu_set_t	cpuset;
 	processorid_t	a_cpu, b_cpu;
@@ -219,9 +219,10 @@ test_posix_xcore(processorid_t cpus[], size_t num_cpus, unsigned int seed)
 #endif
 
 int
-main(int argc, char **argv)
+main()
 {
 	int		i, num_cpus;
+	unsigned int	seed = 0;
 	processorid_t	*cpus;
 	struct timespec ts;
 
@@ -238,13 +239,12 @@ main(int argc, char **argv)
 	get_cpus(&cpus, &num_cpus);
 
 	/* XXX ability to pass seed as arg */
-	int seed = -1;
 	clock_gettime(CLOCK_REALTIME, &ts);
-	seed = (seed == -1) ? (unsigned int)ts.tv_nsec : seed;
+	seed = (seed == 0) ? (unsigned int)ts.tv_nsec : seed;
 	srand(seed);
 
 	for (i = 0; i < 1000; i++) {
-		test_posix_xcore(cpus, num_cpus, seed);
+		test_posix_xcore(cpus, num_cpus);
 	}
 
 	return (0);

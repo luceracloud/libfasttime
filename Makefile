@@ -3,7 +3,7 @@ PLATFORM_MAKEFILE=Makefile.$(shell uname -s)
 include $(PLATFORM_MAKEFILE)
 
 CC=gcc
-CFLAGS=-std=c99 -g -Wall -Werror -O2 $(PLATFORM_CFLAGS)
+CFLAGS=-std=c99 -g -Wall -Wextra -Werror -O2 $(PLATFORM_CFLAGS)
 CPP=-DXOPEN_SOURCE=600 $(PLATFORM_CPP)
 DBGDIR=debug
 DBGOBJ32=$(DBGDIR)/$(OBJ)
