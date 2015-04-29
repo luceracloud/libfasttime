@@ -45,8 +45,8 @@ $(DBGOBJ64): fasttime.c
 
 $(TEST32): fasttime_test.c
 	$(MKDIR) $(TESTDIR)
-	$(CC) -m32 $(CFLAGS) $(CPP) $< -o $(@) $(LD)
+	$(CC) -m32 $(CFLAGS) $(CPP) $< -o $(@) $(DBGOBJ32) $(LD)
 
 $(TEST64): fasttime_test.c
 	$(MKDIR) $(TESTDIR)/64
-	$(CC) -m64 $(CFLAGS) $(CPP) $< -o $(@) $(LD)
+	$(CC) -m64 $(CFLAGS) $(CPP) $< -o $(@) $(DBGOBJ64) $(LD)

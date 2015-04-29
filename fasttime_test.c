@@ -8,6 +8,7 @@
  * tests appear in both categories where the only difference is the
  * length of time you want to assert their trueness.
  */
+#include <assert.h>
 #include <stdio.h>
 #include <inttypes.h>
 #include <stdlib.h>
@@ -41,15 +42,167 @@
  *   cores. Could do this with processor_bind on illumos.
  */
 
-#define	MS_TO_NS(ns)		(ns * 1000000)
-#define	TIMESPEC_TO_NS(ts)	(((uint64_t)ts.tv_sec * NANOSEC) + ts.tv_nsec)
-
 #ifdef __linux
-#define NANOSEC 1000000000
-typedef	int	processorid_t;
+#define	MICROSEC		1000000
+#define	NANOSEC			1000000000
+typedef	int			processorid_t;
 #endif
 
-int get_cpus(processorid_t **cpus, int *size);
+#define	MS_TO_NS(ms)		(ms * 1000000)
+#define	TIMESPEC_TO_NS(ts)	(((uint64_t)ts.tv_sec * NANOSEC) + ts.tv_nsec)
+#define	TIMEVAL_TO_US(tv)	(((uint64_t)tv.tv_sec * MICROSEC) + tv.tv_usec);
+
+/*
+ * Pointers to system functions, loaded by libfasttime.so.
+ */
+extern int (*_sys_clock_gettime)(clockid_t clock_id, struct timespec *tp);
+#ifdef __sun
+extern int (*_sys_gettimeofday)(struct timeval *tp, void *tzp);
+#elif __linux
+extern int (*_sys_gettimeofday)(struct timeval *tp, struct timezone *tz);
+#endif
+
+#ifdef __sun
+
+/*
+ * Get the active CPUs, output via the cpus array. On input size
+ * represents the size of cpus, on output it represents the number of
+ * CPUs active. On success 0 is returned.
+ */
+int
+get_cpus(processorid_t **cpus, int *size)
+{
+	int num_cpus = sysconf(_SC_CPUID_MAX);
+	processorid_t i, j;
+
+	if ((*cpus = calloc(sizeof (processorid_t), num_cpus)) == NULL) {
+		perror("failed to calloc()");
+	}
+
+	for (i = 0, j = 0; i < num_cpus; i++) {
+		if (p_online(i, P_STATUS) != -1)
+			(*cpus)[j++] = i;
+	}
+	*size = j;
+
+	return (0);
+}
+
+#elif __linux
+
+int
+get_cpus(processorid_t **cpus, int *size)
+{
+	int num_cpus = sysconf(_SC_NPROCESSORS_ONLN);
+	processorid_t i;
+
+	if ((*cpus = calloc(sizeof (processorid_t), num_cpus)) == NULL) {
+		perror("failed to calloc()");
+	}
+
+	for (i = 0; i < num_cpus; i++) {
+		(*cpus)[i] = i;
+	}
+	*size = i;
+
+	return (0);
+}
+
+#endif
+
+void
+test_gettimeofday_delta(int64_t max_delta_us)
+{
+	struct timeval	ft_tv;	/* fasttime time */
+	struct timeval	sys_tv;	/* system time */
+	uint64_t	ft_us;	/* fasttime micros */
+	uint64_t	sys_us;	/* system micros */
+	int64_t		delta_us; /* absolute delta */
+
+	if (gettimeofday(&ft_tv, NULL) == -1) {
+		perror("failed to call libfasttime gettimeofday()\n");
+		exit(1);
+	}
+
+	if (_sys_gettimeofday(&sys_tv, NULL) == -1) {
+		perror("failed to call system gettimeofday()\n");
+		exit(1);
+	}
+
+	if (ft_tv.tv_sec < 0 || ft_tv.tv_usec < 0 ||
+	    ft_tv.tv_usec >= 1000000) {
+		printf("ERROR: bad timeval from libfasttime\n");
+		printf("tv.sec: %ld tv.usec: %ld\n",
+		    ft_tv.tv_sec, ft_tv.tv_usec);
+		exit(1);
+	}
+
+	if (sys_tv.tv_sec < 0 || sys_tv.tv_usec < 0 ||
+	    sys_tv.tv_usec >= 1000000) {
+		printf("ERROR: bad timeval from system\n");
+		printf("tv.sec: %ld tv.usec: %ld\n",
+		    sys_tv.tv_sec, sys_tv.tv_usec);
+		exit(1);
+	}
+
+	ft_us = TIMEVAL_TO_US(ft_tv);
+	sys_us = TIMEVAL_TO_US(sys_tv);
+	delta_us = sys_us - ft_us;
+	delta_us = delta_us < 0 ? (delta_us * -1) : delta_us;
+	assert(delta_us >= 0);
+
+	if (delta_us > max_delta_us) {
+		printf("ERROR: libfasttime and system time diverge too much\n");
+		printf("\tsys sec: %ld usec: %ld\n",
+		    sys_tv.tv_sec, sys_tv.tv_usec);
+		printf("\tlib sec: %ld usec: %ld\n",
+		    ft_tv.tv_sec, ft_tv.tv_usec);
+		exit(1);
+	}
+
+	/* Test again, but in opposite order. */
+	if (_sys_gettimeofday(&sys_tv, NULL) == -1) {
+		perror("failed to call system gettimeofday()\n");
+		exit(1);
+	}
+
+	if (gettimeofday(&ft_tv, NULL) == -1) {
+		perror("failed to call libfasttime gettimeofday()\n");
+		exit(1);
+	}
+
+	if (ft_tv.tv_sec < 0 || ft_tv.tv_usec < 0 ||
+	    ft_tv.tv_usec >= 1000000) {
+		printf("ERROR: bad timeval from libfasttime\n");
+		printf("tv.sec: %ld tv.usec: %ld\n",
+		    ft_tv.tv_sec, ft_tv.tv_usec);
+		exit(1);
+	}
+
+	if (sys_tv.tv_sec < 0 || sys_tv.tv_usec < 0 ||
+	    sys_tv.tv_usec >= 1000000) {
+		printf("ERROR: bad timeval from system\n");
+		printf("tv.sec: %ld tv.usec: %ld\n",
+		    sys_tv.tv_sec, sys_tv.tv_usec);
+		exit(1);
+	}
+
+	ft_us = TIMEVAL_TO_US(ft_tv);
+	sys_us = TIMEVAL_TO_US(sys_tv);
+	delta_us = sys_us - ft_us;
+	delta_us = delta_us < 0 ? (delta_us * -1) : delta_us;
+	assert(delta_us >= 0);
+
+	if (delta_us > max_delta_us) {
+		printf("ERROR: libfasttime and system time diverge too much\n");
+		printf("\tsys sec: %ld usec: %ld\n",
+		    sys_tv.tv_sec, sys_tv.tv_usec);
+		printf("\tlib sec: %ld usec: %ld\n",
+		    ft_tv.tv_sec, ft_tv.tv_usec);
+		exit(1);
+	}
+
+}
 
 void
 test_posix_monotonic(const struct timespec *sleep)
@@ -227,6 +380,13 @@ main()
 	struct timespec ts;
 
 	for (i = 0; i < 1000; i++) {
+		/*
+		 * Verify max of 10us delta between libfasttime and system.
+		 */
+		test_gettimeofday_delta(10);
+	}
+
+	for (i = 0; i < 1000; i++) {
 		test_posix_monotonic(NULL);
 	}
 
@@ -249,51 +409,3 @@ main()
 
 	return (0);
 }
-
-#ifdef __sun
-
-/*
- * Get the active CPUs, output via the cpus array. On input size
- * represents the size of cpus, on output it represents the number
- * of CPUs active. On success a 0 is returned.
- */
-int
-get_cpus(processorid_t **cpus, int *size)
-{
-	int num_cpus = sysconf(_SC_CPUID_MAX);
-	processorid_t i, j;
-
-	if ((*cpus = calloc(sizeof (processorid_t), num_cpus)) == NULL) {
-		perror("failed to calloc()");
-	}
-
-	for (i = 0, j = 0; i < num_cpus; i++) {
-		if (p_online(i, P_STATUS) != -1)
-			(*cpus)[j++] = i;
-	}
-	*size = j;
-
-	return (0);
-}
-
-#elif __linux
-
-int
-get_cpus(processorid_t **cpus, int *size)
-{
-	int num_cpus = sysconf(_SC_NPROCESSORS_ONLN);
-	processorid_t i;
-
-	if ((*cpus = calloc(sizeof (processorid_t), num_cpus)) == NULL) {
-		perror("failed to calloc()");
-	}
-
-	for (i = 0; i < num_cpus; i++) {
-		(*cpus)[i] = i;
-	}
-	*size = i;
-
-	return (0);
-}
-
-#endif

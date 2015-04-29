@@ -17,6 +17,7 @@
 #include <sys/stat.h>
 #endif
 #include <sys/types.h>
+#include <sys/time.h>
 #include <time.h>
 #ifdef __sun
 #include <unistd.h>
@@ -32,7 +33,12 @@ static uint64_t		nsec_scale;	/* NANOSEC / CPU Hz */
 /*
  * Pointers to system functions.
  */
-static int (*_sys_clock_gettime)(clockid_t clock_id, struct timespec *tp);
+int (*_sys_clock_gettime)(clockid_t clock_id, struct timespec *tp);
+#ifdef __sun
+int (*_sys_gettimeofday)(struct timeval *tp, void *tzp);
+#elif __linux
+int (*_sys_gettimeofday)(struct timeval *tp, struct timezone *tz);
+#endif
 
 #ifdef __linux
 #define NANOSEC 1000000000
@@ -201,6 +207,11 @@ _init_fasttime()
 		exit(1);
 	}
 
+	if ((_sys_gettimeofday = dlsym(RTLD_NEXT, "gettimeofday")) == NULL) {
+		perror("failed to load system gettimeofday()");
+		exit(1);
+	}
+
 	/*
 	 * The approximate value of the kernel's cpu_freq_hz.
 	 * Approximate because the kernel uses emperical readings of
@@ -230,7 +241,11 @@ _init_fasttime()
 
 
 int
+#ifdef __sun
 gettimeofday(struct timeval *tp, void __attribute__((unused)) *tzp)
+#elif __linux
+gettimeofday(struct timeval *tp, struct timezone __attribute__((unused)) *tz)
+#endif
 {
 	unsigned int a, d;
 	tscu_t tsc;
@@ -248,7 +263,8 @@ gettimeofday(struct timeval *tp, void __attribute__((unused)) *tzp)
 	tp->tv_usec = (base_ts.tv_nsec + nsec) / 1000;
 
 	assert(tp->tv_sec > -1);
-	assert(tp->tv_usec > -1 && tp->tv_usec < 1000000);
+	assert(tp->tv_usec > -1);
+	assert(tp->tv_usec < 1000000);
 
 	return (0);
 }
