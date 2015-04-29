@@ -23,12 +23,12 @@
 #include <unistd.h>
 #endif
 
-
 static void __attribute__ ((constructor)) _init_fasttime();
 
-static struct timespec	base_ts = {0,0}; /* used by clock_gettime() {s,ns} */
-static uint64_t		base_tsc = 0UL;	/* base nanoseconds from TSC */
-static uint64_t		nsec_scale;	/* NANOSEC / CPU Hz */
+static struct timespec	base_ts = {0,0}; /* sys clock value at lib load */
+static uint64_t		base_sys = 0UL;	 /* base_ts in nanos */
+static uint64_t		base_tsc = 0UL;	 /* TSC value (cycles) at lib load */
+static uint64_t		nsec_scale;	 /* NANOSEC / CPU Hz */
 
 /*
  * Pointers to system functions.
@@ -41,7 +41,8 @@ int (*_sys_gettimeofday)(struct timeval *tp, struct timezone *tz);
 #endif
 
 #ifdef __linux
-#define NANOSEC 1000000000
+#define MICROSEC	1000000L
+#define NANOSEC		1000000000L
 #endif
 #define	MHZ_TO_HZ(mhz)	(mhz * 1000000)
 #define	NSEC_SHIFT 5
@@ -228,6 +229,7 @@ _init_fasttime()
 		perror("failed to init fasttime base");
 		exit(1);
 	}
+	base_sys = ((uint64_t)base_ts.tv_sec * NANOSEC) + base_ts.tv_nsec;
 
 	/*
 	 * Since I'm pulling the TSC _after_ the clock nanos it means
@@ -253,18 +255,29 @@ gettimeofday(struct timeval *tp, struct timezone __attribute__((unused)) *tz)
 	if (tp == NULL)
 		return (0);
 
+	/*
+	 * Grab the value in the TSC register, calculate delta since
+	 * the library was loaded, and then convert cycle count to
+	 * nanoseconds; after which the tsc variable will contain
+	 * nanoseconds since library load.
+	 */
 	__asm__ volatile("rdtsc" : "=a" (a), "=d" (d));
 	tsc.tsc_64 = (((uint64_t)a) | ((uint64_t)d) << 32) - base_tsc;
 	TSC_CONVERT(tsc, nsec_scale);
-	time_t sec = tsc.tsc_64 / NANOSEC;
-	long nsec = tsc.tsc_64 % NANOSEC;
 
-	tp->tv_sec = base_ts.tv_sec + sec;
-	tp->tv_usec = (base_ts.tv_nsec + nsec) / 1000;
+	/* Add the nanoseconds since library load to the system clock
+	 * nanoseconds value which was also read at library load:
+	 * producing nanoseconds since Unix epoch. Then convert this
+	 * number into a timeval structure.
+	 */
+	tsc.tsc_64 += base_sys;
+	tp->tv_sec = tsc.tsc_64 / NANOSEC;
+	tp->tv_usec = (tsc.tsc_64 % NANOSEC) / 1000;
 
+	/* Assert that an impossible timeval was not generated. */
 	assert(tp->tv_sec > -1);
 	assert(tp->tv_usec > -1);
-	assert(tp->tv_usec < 1000000);
+	assert(tp->tv_usec < MICROSEC);
 
 	return (0);
 }
@@ -297,22 +310,29 @@ clock_gettime(clockid_t clock_id, struct timespec *tp)
 		__asm__ volatile("rdtsc" : "=a" (a), "=d" (d));
 		tsc.tsc_64 = (((uint64_t)a) | ((uint64_t)d) << 32) - base_tsc;
 		TSC_CONVERT(tsc, nsec_scale);
-		time_t sec = tsc.tsc_64 / NANOSEC;
-		long nsec = tsc.tsc_64 % NANOSEC;
-		tp->tv_sec = base_ts.tv_sec + sec;
-		tp->tv_nsec = base_ts.tv_nsec + nsec;
+
+		tsc.tsc_64 += base_sys;
+		tp->tv_sec = tsc.tsc_64 / NANOSEC;
+		tp->tv_nsec = tsc.tsc_64 % NANOSEC;
+
 		assert(tp->tv_sec > -1);
-		assert(tp->tv_nsec > -1 && tp->tv_nsec < NANOSEC);
+		assert(tp->tv_nsec > -1);
+		assert(tp->tv_nsec < NANOSEC);
+
 		break;
 
 	case CLOCK_MONOTONIC:
 		__asm__ volatile("rdtsc" : "=a" (a), "=d" (d));
 		tsc.tsc_64 = (((uint64_t)a) | ((uint64_t)d) << 32);
 		TSC_CONVERT(tsc, nsec_scale);
+
 		tp->tv_sec = tsc.tsc_64 / NANOSEC;
 		tp->tv_nsec = tsc.tsc_64 % NANOSEC;
+
 		assert(tp->tv_sec > -1);
-		assert(tp->tv_nsec > -1 && tp->tv_nsec < NANOSEC);
+		assert(tp->tv_nsec > -1);
+		assert(tp->tv_nsec < NANOSEC);
+
 		break;
 
 	default:
