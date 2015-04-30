@@ -147,16 +147,18 @@ test_gettimeofday_delta(int64_t max_delta_us)
 
 	ft_us = TIMEVAL_TO_US(ft_tv);
 	sys_us = TIMEVAL_TO_US(sys_tv);
-	delta_us = sys_us - ft_us;
-	delta_us = delta_us < 0 ? (delta_us * -1) : delta_us;
+	delta_us = labs(sys_us - ft_us);
 	assert(delta_us >= 0);
 
 	if (delta_us > max_delta_us) {
-		printf("ERROR: libfasttime and system time diverge too much\n");
-		printf("\tsys sec: %ld usec: %ld\n",
+		printf("ERROR: (1) sys and lib time diverge too much\n");
+		printf("\tsys\tsec: %10ld usec: %7ld\n",
 		    sys_tv.tv_sec, sys_tv.tv_usec);
-		printf("\tlib sec: %ld usec: %ld\n",
+		printf("\tlib\tsec: %10ld usec: %7ld\n",
 		    ft_tv.tv_sec, ft_tv.tv_usec);
+		printf("\tdelta\tsec: %10ld usec: %7ld\n",
+		    labs(sys_tv.tv_sec - ft_tv.tv_sec),
+		    labs(sys_tv.tv_usec - ft_tv.tv_usec));
 		exit(1);
 	}
 
@@ -194,11 +196,14 @@ test_gettimeofday_delta(int64_t max_delta_us)
 	assert(delta_us >= 0);
 
 	if (delta_us > max_delta_us) {
-		printf("ERROR: libfasttime and system time diverge too much\n");
-		printf("\tsys sec: %ld usec: %ld\n",
+		printf("ERROR: (2) sys and lib time diverge too much\n");
+		printf("\tsys\tsec: %10ld usec: %7ld\n",
 		    sys_tv.tv_sec, sys_tv.tv_usec);
-		printf("\tlib sec: %ld usec: %ld\n",
+		printf("\tlib\tsec: %10ld usec: %7ld\n",
 		    ft_tv.tv_sec, ft_tv.tv_usec);
+		printf("\tdelta\tsec: %10ld usec: %7ld\n",
+		    labs(sys_tv.tv_sec - ft_tv.tv_sec),
+		    labs(sys_tv.tv_usec - ft_tv.tv_usec));
 		exit(1);
 	}
 
