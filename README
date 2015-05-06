@@ -44,9 +44,37 @@ CAVEATS
       be a different story if used for precise cycle count in
       microbenchmarks.
 
+INSTALL
+
+    CentOS 6.6
+
+        # yum install gcc glibc-devel.i686 libgcc-4.4.7-11.el6.i686
+        # make
+        # make test
+        # make install
+
 USAGE
 
-    The current method of usage is setting LD_PRELOAD in the program's
-    environment.
+    There are three different ways to link libfasttime to your
+    program.
 
-    LD_PRELOAD=~/path/to/libfasttime.so my_program
+    1) Link to an individual program at compile time via the -L and -l
+       linker flags.
+
+        Linux:
+
+                gcc -m64 -L/opt/lucera/lib64 -lfasttime \
+                    -Wl,-rpath,/opt/lucera/lib64 -o my_program my_program.c
+
+    2) Link to an individual program at runtime via the LD_PRELOAD
+       environment variable.
+
+        Linux:
+
+                LD_PRELOAD=/opt/lucera/\${LIB}/libfasttime.so my_program
+
+    3) Link to all programs at runtime.
+
+        Linux:
+
+                Uncomment line in /etc/ld.so.preload.
