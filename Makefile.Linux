@@ -1,3 +1,9 @@
+LIB32_DIR=$(PREFIX)/lib
+LIB64_DIR=$(PREFIX)/lib64
+
 PLATFORM_CFLAGS=-D_GNU_SOURCE
 PLATFORM_LD=-lrt
 PLATFORM_LIB_LD=-ldl -lm -lrt
+
+install.Linux: install.com
+	cat ld.so.preload >> /etc/ld.so.preload
