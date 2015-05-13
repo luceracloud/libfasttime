@@ -431,7 +431,7 @@ run_short_tests(unsigned int iters)
 	int		consec_over = 0;
 
 	for (i = 0; i < iters; i++) {
-		if (test_gettimeofday_delta(100, &tvhist, &consec_over) == -1) {
+		if (test_gettimeofday_delta(10, &tvhist, &consec_over) == -1) {
 			printf("ERROR: TOD delta too large\n");
 			exit(1);
 		}

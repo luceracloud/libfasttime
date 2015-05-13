@@ -24,11 +24,13 @@
 #endif
 
 static void __attribute__ ((constructor)) _init_fasttime();
+static void sync_local_clock();
 
-static struct timespec	base_ts = {0,0}; /* sys clock value at lib load */
-static uint64_t		base_sys = 0UL;	 /* base_ts in nanos */
-static uint64_t		base_tsc = 0UL;	 /* TSC value (cycles) at lib load */
-static uint64_t		nsec_scale;	 /* NANOSEC / CPU Hz */
+static unsigned int		approx_cpu_hz; /* approximate CPU hertz */
+static __thread struct timespec	base_ts = {0,0}; /* sys clock value */
+static __thread uint64_t	base_sys = 0UL;	 /* base_ts in nanos */
+static __thread uint64_t	base_tsc = 0UL;	 /* TSC value (cycles) */
+static uint64_t			nsec_scale;	 /* NANOSEC / CPU Hz */
 
 /*
  * Pointers to system functions.
@@ -41,6 +43,7 @@ int (*_sys_gettimeofday)(struct timeval *tp, struct timezone *tz);
 #endif
 
 #ifdef __linux
+#define MILLISEC	1000L
 #define MICROSEC	1000000L
 #define NANOSEC		1000000000L
 #endif
@@ -199,8 +202,6 @@ get_cpu_mhz()
 static void
 _init_fasttime()
 {
-	unsigned int a, d, approx_cpu_hz;
-
 	(void) check_tsc();
 
 	if ((_sys_clock_gettime = dlsym(RTLD_NEXT, "clock_gettime")) == NULL) {
@@ -224,6 +225,17 @@ _init_fasttime()
 	approx_cpu_hz = MHZ_TO_HZ(get_cpu_mhz());
 	nsec_scale =
 	    (uint64_t)(((uint64_t)NANOSEC << (32 - NSEC_SHIFT)) / approx_cpu_hz);
+
+	sync_local_clock();
+}
+
+/*
+ * Sync the thread's local clock with the system clock.
+ */
+static void
+sync_local_clock()
+{
+	unsigned int a, d;
 
 	if (_sys_clock_gettime(CLOCK_REALTIME, &base_ts) == -1) {
 		perror("failed to init fasttime base");
@@ -265,14 +277,25 @@ gettimeofday(struct timeval *tp, struct timezone __attribute__((unused)) *tz)
 	tsc.tsc_64 = (((uint64_t)a) | ((uint64_t)d) << 32) - base_tsc;
 	TSC_CONVERT(tsc, nsec_scale);
 
-	/* Add the nanoseconds since library load to the system clock
-	 * nanoseconds value which was also read at library load:
-	 * producing nanoseconds since Unix epoch. Then convert this
-	 * number into a timeval structure.
+	/*
+	 * Synchonize local clock with system if it's been more than
+	 * 1ms since last sync.
 	 */
-	tsc.tsc_64 += base_sys;
-	tp->tv_sec = tsc.tsc_64 / NANOSEC;
-	tp->tv_usec = (tsc.tsc_64 % NANOSEC) / 1000;
+	if (tsc.tsc_64 >= (1 * (NANOSEC / MILLISEC))) {
+		sync_local_clock();
+		tp->tv_sec = base_ts.tv_sec;
+		tp->tv_usec = base_ts.tv_nsec / 1000;
+	} else {
+		/* Add the nanoseconds since local sync to the system
+		 * clock nanoseconds value which was also read at last
+		 * sync: producing nanoseconds since Unix epoch. Then
+		 * convert this number into a timeval structure.
+		 */
+		tsc.tsc_64 += base_sys;
+		tp->tv_sec = tsc.tsc_64 / NANOSEC;
+		tp->tv_usec = (tsc.tsc_64 % NANOSEC) / 1000;
+	}
+
 
 	/* Assert that an impossible timeval was not generated. */
 	assert(tp->tv_sec > -1);
@@ -311,9 +334,15 @@ clock_gettime(clockid_t clock_id, struct timespec *tp)
 		tsc.tsc_64 = (((uint64_t)a) | ((uint64_t)d) << 32) - base_tsc;
 		TSC_CONVERT(tsc, nsec_scale);
 
-		tsc.tsc_64 += base_sys;
-		tp->tv_sec = tsc.tsc_64 / NANOSEC;
-		tp->tv_nsec = tsc.tsc_64 % NANOSEC;
+		if (tsc.tsc_64 >= (1 * (NANOSEC / MILLISEC))) {
+			sync_local_clock();
+			tp->tv_sec = base_ts.tv_sec;
+			tp->tv_nsec = base_ts.tv_nsec;
+		} else {
+			tsc.tsc_64 += base_sys;
+			tp->tv_sec = tsc.tsc_64 / NANOSEC;
+			tp->tv_nsec = tsc.tsc_64 % NANOSEC;
+		}
 
 		assert(tp->tv_sec > -1);
 		assert(tp->tv_nsec > -1);
