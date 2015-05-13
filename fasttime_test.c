@@ -70,7 +70,7 @@ extern int (*_sys_gettimeofday)(struct timeval *tp, struct timezone *tz);
  * CPUs active. On success 0 is returned.
  */
 int
-get_cpus(processorid_t **cpus, int *size)
+get_cpus(processorid_t **cpus, size_t *size)
 {
 	int num_cpus = sysconf(_SC_CPUID_MAX);
 	processorid_t i, j;
@@ -91,7 +91,7 @@ get_cpus(processorid_t **cpus, int *size)
 #elif __linux
 
 int
-get_cpus(processorid_t **cpus, int *size)
+get_cpus(processorid_t **cpus, size_t *size)
 {
 	int num_cpus = sysconf(_SC_NPROCESSORS_ONLN);
 	processorid_t i;
@@ -376,40 +376,98 @@ test_posix_xcore(processorid_t cpus[], size_t __attribute__((unused)) num_cpus)
 
 #endif
 
-int
-main()
+/*
+ * Run short tests. Each short tests is called back-to-back in rapid
+ * succession for the given number of iterations.
+ */
+void
+run_short_tests(unsigned int iters)
 {
-	int		i, num_cpus;
-	unsigned int	seed = 0;
+	unsigned int	i;
 	processorid_t	*cpus;
+	size_t		cpus_size;
 	struct timespec ts;
 
-	for (i = 0; i < 1000; i++) {
+	for (i = 0; i < iters; i++) {
 		/*
-		 * Verify max of 10us delta between libfasttime and system.
+		 * Verify max of 100us delta between libfasttime and
+		 * system. Even with a 100us leniency this test will
+		 * occasionally fail because of gettimeofday()'s large
+		 * latency variations. I've seen it take over 100us
+		 * many times and even 1ms once.
 		 */
-		test_gettimeofday_delta(10);
+		test_gettimeofday_delta(100);
 	}
 
-	for (i = 0; i < 1000; i++) {
+	for (i = 0; i < iters; i++) {
 		test_posix_monotonic(NULL);
 	}
 
-	for (i = 0; i < 1000; i++) {
+	for (i = 0; i < iters; i++) {
 		ts.tv_sec = 0;
 		ts.tv_nsec = MS_TO_NS(0 * i);
 		test_posix_monotonic(&ts);
 	}
 
-	get_cpus(&cpus, &num_cpus);
+	get_cpus(&cpus, &cpus_size);
+
+	for (i = 0; i < iters; i++) {
+		test_posix_xcore(cpus, cpus_size);
+	}
+}
+
+/*
+ * Run the long tests which are the same as the short tests but run
+ * for the period of time specified by mins.
+ */
+void
+run_long_tests(unsigned int mins)
+{
+	unsigned int	i;
+	unsigned int	secs = mins * 60;
+
+	for (i = 0; i < secs; i++) {
+		run_short_tests(1000);
+		sleep(1);
+	}
+}
+
+int
+main(int argc, char **argv)
+{
+	int		c, i;
+	unsigned int	seed = 0;
+	unsigned int	mins = 0;
+	struct timespec ts;
+
+	while ((c = getopt(argc, argv, ":l:")) != -1) {
+		switch (c) {
+		case 'l':
+			mins = atoi(optarg);
+			break;
+		case '?':
+			fprintf(stderr, "Unknown option: %c\n", c);
+			exit(1);
+			break;
+		case ':':
+			fprintf(stderr, "Option %c missing argument\n", c);
+			exit(1);
+			break;
+		}
+	}
 
 	/* XXX ability to pass seed as arg */
 	clock_gettime(CLOCK_REALTIME, &ts);
 	seed = (seed == 0) ? (unsigned int)ts.tv_nsec : seed;
 	srand(seed);
 
-	for (i = 0; i < 1000; i++) {
-		test_posix_xcore(cpus, num_cpus);
+	if (mins == 0) {
+		for (i = 0; i < 5; i++) {
+			run_short_tests(1000);
+			sleep(1);
+		}
+	} else {
+		run_long_tests(mins);
 	}
 
 	return (0);

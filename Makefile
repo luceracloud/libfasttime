@@ -31,7 +31,7 @@ CP=cp
 MKDIR=mkdir -p
 RM=rm -rf
 
-.PHONY: all clean debug test
+.PHONY: all clean debug test test-long
 
 all:	dbg $(TESTS)
 
@@ -54,6 +54,12 @@ test:	all
 	LD_PRELOAD=$(DBGOBJ32) $(TEST32)
 	@echo running 64-bit test
 	LD_PRELOAD=$(DBGOBJ64) $(TEST64)
+
+test-long: all
+	@echo running long \(5 mins\) 32-bit test
+	LD_PRELOAD=$(DBGOBJ32) $(TEST32) -l 5
+	@echo running long \(5 mins\) 64-bit test
+	LD_PRELOAD=$(DBGOBJ64) $(TEST64) -l 5
 
 $(DBGOBJ32): fasttime.c
 	$(MKDIR) $(DBGDIR)
