@@ -26,11 +26,18 @@
 static void __attribute__ ((constructor)) _init_fasttime();
 static void sync_local_clock();
 
-static unsigned int		approx_cpu_hz; /* approximate CPU hertz */
+static unsigned int		approx_cpu_hz; /* approximate CPU Hz */
+static uint64_t			nsec_scale;    /* NANOSEC / CPU Hz */
+
+/*
+ * Local cache of the system TOD clock and the TSC cycle count. These
+ * variables are referred to as the "local clock". They are the base
+ * from which libfasttime derives its value of time.
+ */
 static __thread struct timespec	base_ts = {0,0}; /* sys clock value */
 static __thread uint64_t	base_sys = 0UL;	 /* base_ts in nanos */
 static __thread uint64_t	base_tsc = 0UL;	 /* TSC value (cycles) */
-static uint64_t			nsec_scale;	 /* NANOSEC / CPU Hz */
+
 
 /*
  * Pointers to system functions.

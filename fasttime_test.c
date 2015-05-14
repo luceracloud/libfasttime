@@ -1,12 +1,9 @@
 /*
- * XXX This file still needs a lot of work.
- *
  * This file contains tests to verify that libfasttime is not doing
  * anything horribly wrong. It contains short tests for things that
  * can be verified quickly and long-running tests for bugs which take
- * physical time to manifest (such as TSC clock drift). Some of these
- * tests appear in both categories where the only difference is the
- * length of time you want to assert their trueness.
+ * physical time to manifest like divergence between the system clock
+ * and the local libfasttime clock (base_* variables).
  */
 #include <assert.h>
 #include <stdio.h>
@@ -23,24 +20,6 @@
 #ifdef __linux
 #include <sched.h>
 #endif
-
-/*
- * Tests to implement:
- *
- * - Verify monoticity for POSIX clock and gethrtime, they should
- *   never go backwards. (short & long)
- *
- * - Verify fasttime functions are within a certain bound of the
- *   system, e.g. make sure that the system's gettimeofday() and
- *   fasttime's gettimeofday() don't diverge more than they should.
- *   (short & long)
- *
- * - Verify that fasttime notices changes in the system clock. This
- *   feature has yet to be implemented.
- *
- * - Verify that fasttime doesn't go backwards when switching between
- *   cores. Could do this with processor_bind on illumos.
- */
 
 #ifdef __linux
 #define	MICROSEC		1000000
