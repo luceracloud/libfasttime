@@ -52,6 +52,33 @@ typedef	int			processorid_t;
 #define	TIMESPEC_TO_NS(ts)	(((uint64_t)ts.tv_sec * NANOSEC) + ts.tv_nsec)
 #define	TIMEVAL_TO_US(tv)	(((uint64_t)tv.tv_sec * MICROSEC) + tv.tv_usec);
 
+enum tvh_types {
+	TVH_SYS = 0,
+	TVH_FT,
+	TVH_TYPES
+};
+
+#define	TVH_HIST_SIZE		10
+#define	TVH_IDX_INCR(idx)	(idx = ((idx + 1) % (TVH_HIST_SIZE + 1)))
+
+/*
+ * A timeval history structure for tracking the last TVH_HIST_SIZE
+ * timevals reported. Used for tests that track local clock divergence
+ * over time. Implemented as a circular array.
+ */
+typedef struct tv_hist {
+	int		tvh_hidx;		/* head index */
+	int		tvh_tidx;		/* tail index */
+
+        /* Array of timevals, one per history type. */
+	struct timeval	tvh_list[TVH_TYPES][TVH_HIST_SIZE + 1];
+} tvh_t;
+
+static tvh_t			tvhist;
+
+void add_to_hist(struct timeval sys_tv, struct timeval ft_tv, tvh_t *tvhist);
+void print_hist(tvh_t *tvhist);
+
 /*
  * Pointers to system functions, loaded by libfasttime.so.
  */
@@ -110,8 +137,30 @@ get_cpus(processorid_t **cpus, size_t *size)
 
 #endif
 
-void
-test_gettimeofday_delta(int64_t max_delta_us)
+/*
+ * Verify that the system TOD and local TOD are not too far out of
+ * sync.
+ *
+ * max_delta_us
+ *
+ *	The maximum allowed divergence in microseconds between the
+ *	system and local TOD.
+ *
+ * tvhist
+ *
+ *	A bounded history of previous timevals. Used to log timevals
+ *	that lead up to a failure.
+ *
+ * consec_over
+ *
+ *	The number of consecutive invocations in which the divergence
+ *	was greater than max_delta_us.
+ *
+ * Return -1 if a test or runtime failure occurs.
+ *
+ */
+int
+test_gettimeofday_delta(int64_t max_delta_us, tvh_t *tvhist, int *consec_over)
 {
 	struct timeval	ft_tv;	/* fasttime time */
 	struct timeval	sys_tv;	/* system time */
@@ -119,22 +168,14 @@ test_gettimeofday_delta(int64_t max_delta_us)
 	uint64_t	sys_us;	/* system micros */
 	int64_t		delta_us; /* absolute delta */
 
-	if (gettimeofday(&ft_tv, NULL) == -1) {
-		perror("failed to call libfasttime gettimeofday()\n");
-		exit(1);
-	}
-
 	if (_sys_gettimeofday(&sys_tv, NULL) == -1) {
 		perror("failed to call system gettimeofday()\n");
-		exit(1);
+		return (-1);
 	}
 
-	if (ft_tv.tv_sec < 0 || ft_tv.tv_usec < 0 ||
-	    ft_tv.tv_usec >= 1000000) {
-		printf("ERROR: bad timeval from libfasttime\n");
-		printf("tv.sec: %ld tv.usec: %ld\n",
-		    ft_tv.tv_sec, ft_tv.tv_usec);
-		exit(1);
+	if (gettimeofday(&ft_tv, NULL) == -1) {
+		perror("failed to call libfasttime gettimeofday()\n");
+		return (-1);
 	}
 
 	if (sys_tv.tv_sec < 0 || sys_tv.tv_usec < 0 ||
@@ -142,8 +183,18 @@ test_gettimeofday_delta(int64_t max_delta_us)
 		printf("ERROR: bad timeval from system\n");
 		printf("tv.sec: %ld tv.usec: %ld\n",
 		    sys_tv.tv_sec, sys_tv.tv_usec);
-		exit(1);
+		return (-1);
 	}
+
+	if (ft_tv.tv_sec < 0 || ft_tv.tv_usec < 0 ||
+	    ft_tv.tv_usec >= 1000000) {
+		printf("ERROR: bad timeval from libfasttime\n");
+		printf("tv.sec: %ld tv.usec: %ld\n",
+		    ft_tv.tv_sec, ft_tv.tv_usec);
+		return (-1);
+	}
+
+	add_to_hist(sys_tv, ft_tv, tvhist);
 
 	ft_us = TIMEVAL_TO_US(ft_tv);
 	sys_us = TIMEVAL_TO_US(sys_tv);
@@ -151,62 +202,52 @@ test_gettimeofday_delta(int64_t max_delta_us)
 	assert(delta_us >= 0);
 
 	if (delta_us > max_delta_us) {
-		printf("ERROR: (1) sys and lib time diverge too much\n");
-		printf("\tsys\tsec: %10ld usec: %7ld\n",
+		*consec_over += 1;
+		if (*consec_over == 3) {
+			print_hist(tvhist);
+			return (-1);
+		}
+
+		return (0);
+	}
+
+	*consec_over = 0;
+
+	return (0);
+}
+
+void
+add_to_hist(struct timeval sys_tv, struct timeval ft_tv, tvh_t *tvhist)
+{
+	tvhist->tvh_list[TVH_SYS][tvhist->tvh_tidx] = sys_tv;
+	tvhist->tvh_list[TVH_FT][tvhist->tvh_tidx] = ft_tv;
+	TVH_IDX_INCR(tvhist->tvh_tidx);
+
+	if (tvhist->tvh_tidx == tvhist->tvh_hidx) {
+		TVH_IDX_INCR(tvhist->tvh_hidx);
+	}
+}
+
+void
+print_hist(tvh_t *tvhist)
+{
+	struct timeval sys_tv, ft_tv;
+
+	while (tvhist->tvh_hidx != tvhist->tvh_tidx) {
+		sys_tv = tvhist->tvh_list[TVH_SYS][tvhist->tvh_hidx];
+		ft_tv = tvhist->tvh_list[TVH_FT][tvhist->tvh_hidx];
+
+		printf("sys\tsec: %10ld usec: %7ld\n",
 		    sys_tv.tv_sec, sys_tv.tv_usec);
-		printf("\tlib\tsec: %10ld usec: %7ld\n",
+		printf("lib\tsec: %10ld usec: %7ld\n",
 		    ft_tv.tv_sec, ft_tv.tv_usec);
-		printf("\tdelta\tsec: %10ld usec: %7ld\n",
+		printf("delta\tsec: %10ld usec: %7ld\n",
 		    labs(sys_tv.tv_sec - ft_tv.tv_sec),
 		    labs(sys_tv.tv_usec - ft_tv.tv_usec));
-		exit(1);
+		printf("\n");
+
+		TVH_IDX_INCR(tvhist->tvh_hidx);
 	}
-
-	/* Test again, but in opposite order. */
-	if (_sys_gettimeofday(&sys_tv, NULL) == -1) {
-		perror("failed to call system gettimeofday()\n");
-		exit(1);
-	}
-
-	if (gettimeofday(&ft_tv, NULL) == -1) {
-		perror("failed to call libfasttime gettimeofday()\n");
-		exit(1);
-	}
-
-	if (ft_tv.tv_sec < 0 || ft_tv.tv_usec < 0 ||
-	    ft_tv.tv_usec >= 1000000) {
-		printf("ERROR: bad timeval from libfasttime\n");
-		printf("tv.sec: %ld tv.usec: %ld\n",
-		    ft_tv.tv_sec, ft_tv.tv_usec);
-		exit(1);
-	}
-
-	if (sys_tv.tv_sec < 0 || sys_tv.tv_usec < 0 ||
-	    sys_tv.tv_usec >= 1000000) {
-		printf("ERROR: bad timeval from system\n");
-		printf("tv.sec: %ld tv.usec: %ld\n",
-		    sys_tv.tv_sec, sys_tv.tv_usec);
-		exit(1);
-	}
-
-	ft_us = TIMEVAL_TO_US(ft_tv);
-	sys_us = TIMEVAL_TO_US(sys_tv);
-	delta_us = sys_us - ft_us;
-	delta_us = delta_us < 0 ? (delta_us * -1) : delta_us;
-	assert(delta_us >= 0);
-
-	if (delta_us > max_delta_us) {
-		printf("ERROR: (2) sys and lib time diverge too much\n");
-		printf("\tsys\tsec: %10ld usec: %7ld\n",
-		    sys_tv.tv_sec, sys_tv.tv_usec);
-		printf("\tlib\tsec: %10ld usec: %7ld\n",
-		    ft_tv.tv_sec, ft_tv.tv_usec);
-		printf("\tdelta\tsec: %10ld usec: %7ld\n",
-		    labs(sys_tv.tv_sec - ft_tv.tv_sec),
-		    labs(sys_tv.tv_usec - ft_tv.tv_usec));
-		exit(1);
-	}
-
 }
 
 void
@@ -387,16 +428,13 @@ run_short_tests(unsigned int iters)
 	processorid_t	*cpus;
 	size_t		cpus_size;
 	struct timespec ts;
+	int		consec_over = 0;
 
 	for (i = 0; i < iters; i++) {
-		/*
-		 * Verify max of 100us delta between libfasttime and
-		 * system. Even with a 100us leniency this test will
-		 * occasionally fail because of gettimeofday()'s large
-		 * latency variations. I've seen it take over 100us
-		 * many times and even 1ms once.
-		 */
-		test_gettimeofday_delta(100);
+		if (test_gettimeofday_delta(100, &tvhist, &consec_over) == -1) {
+			printf("ERROR: TOD delta too large\n");
+			exit(1);
+		}
 	}
 
 	for (i = 0; i < iters; i++) {
