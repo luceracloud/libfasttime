@@ -1,5 +1,14 @@
                              LIBFASTTIME
 
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+This was open sourced before I expected. Much of the work was done
+half a year ago and still has rough edges from what I remember,
+specifically around gettimeofday(). The test code is also quite messy.
+Please spend some time verifying behavior before putting in
+production. Improvements will be eagerly accepted.
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
 Fast time calls from user space.
 
 SUMMARY
@@ -30,11 +39,6 @@ OVERRIDDEN FUNCTIONS
       available on illumos.
 
 CAVEATS
-
-    * The current implementation doesn't pick up wall clock changes
-      and thus gettimeofday(3C) can drift from the system value. For
-      example, NTP changes will not be noticed. This may be acceptable
-      for short-lived applications but considered fatal otherwise.
 
     * All functions are built on the CPU's TSC register. To provide
       the expected latency no fencing (LFENCE) or synchronization

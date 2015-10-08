@@ -1,4 +1,11 @@
 /*
+ * Copyright 2015 Lucera Financial Infrastructure, LLC
+ *
+ * This software may be modified and distributed under the terms of
+ * the MIT license. See the LICENSE file for details.
+ */
+
+/*
  * This file contains tests to verify that libfasttime is not doing
  * anything horribly wrong. It contains short tests for things that
  * can be verified quickly and long-running tests for bugs which take
