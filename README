@@ -52,7 +52,7 @@ INSTALL
 
     CentOS 6.6
 
-        # yum install gcc glibc-devel.i686 libgcc-4.4.7-11.el6.i686
+        # yum install gcc glibc-devel.i686 libgcc-4.4.7-11.el6.i686 libstdc++-devel.i686
         # make
         # make test
         # make install
